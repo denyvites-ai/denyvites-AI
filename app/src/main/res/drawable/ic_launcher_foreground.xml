@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Symmetric Shield Guard -->
+    <path
+        android:pathData="M54,20 C68,20 84,23 84,23 C84,23 84,55 84,65 C84,78 68,88 54,92 C40,88 24,78 24,65 C24,55 24,23 24,23 C24,23 40,20 54,20 Z"
+        android:fillColor="#1A00E676"
+        android:strokeWidth="3.5"
+        android:strokeColor="#00E676" />
+    <!-- Outer Shield highlight -->
+    <path
+        android:pathData="M54,25 C64,25 78,28 78,28 C78,28 78,54 78,62 C78,72 66,81 54,85 C42,81 30,72 30,62 C30,54 30,28 30,28 C30,28 44,25 54,25 Z"
+        android:strokeWidth="1.2"
+        android:strokeColor="#00B0FF" />
+    <!-- Glowing Core Victory Star representing core athletic power -->
+    <path
+        android:pathData="M54,35 L58,45 L69,45 L60,52 L64,62 L54,56 L44,62 L48,52 L39,45 L50,45 Z"
+        android:fillColor="#00E676"
+        android:strokeWidth="1"
+        android:strokeColor="#FFFFFF" />
+</vector>

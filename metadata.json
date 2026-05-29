@@ -1,0 +1,6 @@
+{
+  "name": "SchoolShield",
+  "description": "An offline companion app for drug rehabilitation, habit transformation, and campaign education combined with core workouts for school children.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
