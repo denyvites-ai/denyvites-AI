@@ -1,8 +1,10 @@
 import sqlite3
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, scrolledtext, filedialog
 from datetime import datetime
 import re
+import csv
+from io import StringIO
 
 # =====================================================================
 # OFFLINE SCHOOL MANAGEMENT SYSTEM
@@ -12,7 +14,7 @@ class SchoolManagementSystem:
     def __init__(self, root):
         self.root = root
         self.root.title("School Management System")
-        self.root.geometry("900x700")
+        self.root.geometry("1000x750")
         self.root.configure(bg="#f0f0f0")
         
         # Initialize database
@@ -58,10 +60,32 @@ class SchoolManagementSystem:
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS students (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
+                    user_id INTEGER,
+                    name TEXT NOT NULL,
+                    email TEXT,
                     form_class TEXT,
                     student_id TEXT UNIQUE,
+                    date_enrolled TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            ''')
+            
+            # Student Marks/Grades table
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS student_marks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    student_id INTEGER NOT NULL,
+                    subject TEXT NOT NULL,
+                    term INTEGER,
+                    mark_1 REAL,
+                    mark_2 REAL,
+                    mark_3 REAL,
+                    mark_4 REAL,
+                    exam_mark REAL,
+                    total_mark REAL,
+                    grade TEXT,
+                    date_recorded TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(student_id) REFERENCES students(id)
                 )
             ''')
             
@@ -294,17 +318,346 @@ class SchoolManagementSystem:
         
         # Buttons based on role
         if self.current_user_role == "Admin":
-            ttk.Button(menu_frame, text="Manage Timetable", width=40).pack(pady=5, fill=tk.X)
-            ttk.Button(menu_frame, text="Manage Roster", width=40).pack(pady=5, fill=tk.X)
-            ttk.Button(menu_frame, text="Manage Users", width=40).pack(pady=5, fill=tk.X)
+            ttk.Button(menu_frame, text="Manage Timetable", width=50).pack(pady=5, fill=tk.X)
+            ttk.Button(menu_frame, text="Manage Roster", width=50).pack(pady=5, fill=tk.X)
+            ttk.Button(menu_frame, text="Bulk Register Students", command=self.show_bulk_student_registration, width=50).pack(pady=5, fill=tk.X)
+            ttk.Button(menu_frame, text="View All Students", command=self.show_all_students, width=50).pack(pady=5, fill=tk.X)
+            ttk.Button(menu_frame, text="Student Marks Management", command=self.show_marks_management, width=50).pack(pady=5, fill=tk.X)
+            ttk.Button(menu_frame, text="Manage Users", width=50).pack(pady=5, fill=tk.X)
         
         elif self.current_user_role == "Teacher":
-            ttk.Button(menu_frame, text="View My Timetable", width=40).pack(pady=5, fill=tk.X)
-            ttk.Button(menu_frame, text="View Roster", width=40).pack(pady=5, fill=tk.X)
+            ttk.Button(menu_frame, text="View My Timetable", width=50).pack(pady=5, fill=tk.X)
+            ttk.Button(menu_frame, text="View Roster", width=50).pack(pady=5, fill=tk.X)
+            ttk.Button(menu_frame, text="Register Student Marks", command=self.show_marks_management, width=50).pack(pady=5, fill=tk.X)
+            ttk.Button(menu_frame, text="View Student List", command=self.show_all_students, width=50).pack(pady=5, fill=tk.X)
         
         elif self.current_user_role == "Student":
-            ttk.Button(menu_frame, text="View My Classes", width=40).pack(pady=5, fill=tk.X)
-            ttk.Button(menu_frame, text="View Timetable", width=40).pack(pady=5, fill=tk.X)
+            ttk.Button(menu_frame, text="View My Classes", width=50).pack(pady=5, fill=tk.X)
+            ttk.Button(menu_frame, text="View Timetable", width=50).pack(pady=5, fill=tk.X)
+            ttk.Button(menu_frame, text="View My Marks", command=self.show_my_marks, width=50).pack(pady=5, fill=tk.X)
+    
+    def show_bulk_student_registration(self):
+        """Show bulk student registration interface"""
+        self.clear_screen()
+        
+        # Header
+        header_frame = ttk.Frame(self.root)
+        header_frame.pack(fill=tk.X, padx=20, pady=10)
+        ttk.Label(header_frame, text="Bulk Student Registration", font=("Arial", 14, "bold")).pack(side=tk.LEFT)
+        ttk.Button(header_frame, text="Back", command=self.show_dashboard).pack(side=tk.RIGHT)
+        
+        # Main content
+        content_frame = ttk.Frame(self.root)
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Instructions
+        ttk.Label(content_frame, text="Paste student data in CSV format (Name, Email, Form Class, Student ID):", 
+                 font=("Arial", 10)).pack(anchor=tk.W, pady=5)
+        
+        ttk.Label(content_frame, text="Example:\nJohn Doe,john.doe@school.com,1 Red,STU001\nJane Smith,jane.smith@school.com,1 Yellow,STU002", 
+                 font=("Arial", 9), foreground="gray").pack(anchor=tk.W, pady=5)
+        
+        # Text area for pasting data
+        ttk.Label(content_frame, text="Paste Student Data:", font=("Arial", 10)).pack(anchor=tk.W, pady=(10, 5))
+        self.bulk_data_text = scrolledtext.ScrolledText(content_frame, height=15, width=80, font=("Courier", 9))
+        self.bulk_data_text.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Buttons frame
+        button_frame = ttk.Frame(content_frame)
+        button_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Button(button_frame, text="Import from CSV File", command=self.import_csv_file).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Register Students", command=self.process_bulk_registration).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Clear", command=lambda: self.bulk_data_text.delete(1.0, tk.END)).pack(side=tk.LEFT, padx=5)
+    
+    def import_csv_file(self):
+        """Import CSV file for bulk registration"""
+        file_path = filedialog.askopenfilename(
+            title="Select CSV File",
+            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
+        )
+        
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                self.bulk_data_text.insert(tk.END, content)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to read file: {e}")
+    
+    def process_bulk_registration(self):
+        """Process bulk student registration from pasted data"""
+        data = self.bulk_data_text.get(1.0, tk.END).strip()
+        
+        if not data:
+            messagebox.showerror("Error", "Please paste student data")
+            return
+        
+        lines = data.split('\n')
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        try:
+            for line_num, line in enumerate(lines, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                try:
+                    parts = [p.strip() for p in line.split(',')]
+                    
+                    if len(parts) < 4:
+                        errors.append(f"Line {line_num}: Invalid format (need Name, Email, Form Class, Student ID)")
+                        error_count += 1
+                        continue
+                    
+                    name, email, form_class, student_id = parts[0], parts[1], parts[2], parts[3]
+                    
+                    if not name or not email or not form_class or not student_id:
+                        errors.append(f"Line {line_num}: Missing required fields")
+                        error_count += 1
+                        continue
+                    
+                    if email and not self.validate_email(email):
+                        errors.append(f"Line {line_num}: Invalid email format for {name}")
+                        error_count += 1
+                        continue
+                    
+                    # Check if student ID already exists
+                    self.cursor.execute("SELECT id FROM students WHERE student_id = ?", (student_id,))
+                    if self.cursor.fetchone():
+                        errors.append(f"Line {line_num}: Student ID {student_id} already exists")
+                        error_count += 1
+                        continue
+                    
+                    # Insert student
+                    self.cursor.execute(
+                        "INSERT INTO students (name, email, form_class, student_id) VALUES (?, ?, ?, ?)",
+                        (name, email, form_class, student_id)
+                    )
+                    success_count += 1
+                
+                except Exception as e:
+                    errors.append(f"Line {line_num}: {str(e)}")
+                    error_count += 1
+            
+            self.conn.commit()
+            
+            # Show results
+            message = f"✓ Successfully registered: {success_count} students\n"
+            if error_count > 0:
+                message += f"✗ Errors: {error_count}\n\n"
+                message += "Error Details:\n" + "\n".join(errors[:10])
+                if len(errors) > 10:
+                    message += f"\n... and {len(errors) - 10} more errors"
+            
+            messagebox.showinfo("Registration Complete", message)
+            
+            if success_count > 0:
+                self.bulk_data_text.delete(1.0, tk.END)
+        
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error during registration: {e}")
+    
+    def show_all_students(self):
+        """Show all registered students"""
+        self.clear_screen()
+        
+        # Header
+        header_frame = ttk.Frame(self.root)
+        header_frame.pack(fill=tk.X, padx=20, pady=10)
+        ttk.Label(header_frame, text="Student List", font=("Arial", 14, "bold")).pack(side=tk.LEFT)
+        ttk.Button(header_frame, text="Back", command=self.show_dashboard).pack(side=tk.RIGHT)
+        
+        # Content
+        content_frame = ttk.Frame(self.root)
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Create treeview
+        columns = ("Student ID", "Name", "Email", "Form Class", "Date Enrolled")
+        self.student_tree = ttk.Treeview(content_frame, columns=columns, height=20)
+        self.student_tree.column("#0", width=0)
+        self.student_tree.column("Student ID", width=80)
+        self.student_tree.column("Name", width=120)
+        self.student_tree.column("Email", width=150)
+        self.student_tree.column("Form Class", width=80)
+        self.student_tree.column("Date Enrolled", width=120)
+        
+        self.student_tree.heading("#0", text="")
+        self.student_tree.heading("Student ID", text="Student ID")
+        self.student_tree.heading("Name", text="Name")
+        self.student_tree.heading("Email", text="Email")
+        self.student_tree.heading("Form Class", text="Form Class")
+        self.student_tree.heading("Date Enrolled", text="Date Enrolled")
+        
+        # Load data
+        try:
+            self.cursor.execute("SELECT student_id, name, email, form_class, date_enrolled FROM students ORDER BY date_enrolled DESC")
+            for row in self.cursor.fetchall():
+                self.student_tree.insert("", tk.END, values=row)
+        except sqlite3.Error as e:
+            messagebox.showerror("Error", f"Failed to load students: {e}")
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(content_frame, orient=tk.VERTICAL, command=self.student_tree.yview)
+        self.student_tree.configure(yscroll=scrollbar.set)
+        
+        self.student_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    
+    def show_marks_management(self):
+        """Show student marks registration interface"""
+        self.clear_screen()
+        
+        # Header
+        header_frame = ttk.Frame(self.root)
+        header_frame.pack(fill=tk.X, padx=20, pady=10)
+        ttk.Label(header_frame, text="Student Marks Management", font=("Arial", 14, "bold")).pack(side=tk.LEFT)
+        ttk.Button(header_frame, text="Back", command=self.show_dashboard).pack(side=tk.RIGHT)
+        
+        # Main content
+        content_frame = ttk.Frame(self.root)
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Student selection
+        ttk.Label(content_frame, text="Select Student:", font=("Arial", 10)).pack(anchor=tk.W, pady=5)
+        
+        self.student_var = tk.StringVar()
+        self.student_combo = ttk.Combobox(content_frame, textvariable=self.student_var, state="readonly", width=50)
+        self.student_combo.pack(fill=tk.X, pady=5)
+        
+        # Load students
+        try:
+            self.cursor.execute("SELECT id, name, student_id FROM students ORDER BY name")
+            self.students_data = {f"{row[2]} - {row[1]}": row[0] for row in self.cursor.fetchall()}
+            self.student_combo['values'] = list(self.students_data.keys())
+        except sqlite3.Error as e:
+            messagebox.showerror("Error", f"Failed to load students: {e}")
+        
+        # Form for marks entry
+        ttk.Label(content_frame, text="Subject:", font=("Arial", 10)).pack(anchor=tk.W, pady=(15, 5))
+        self.subject_combo = ttk.Combobox(content_frame, 
+                                         values=["Mathematics", "English", "Science", "History", "Geography", "Shona", "Business Studies"], 
+                                         state="readonly", width=50)
+        self.subject_combo.pack(fill=tk.X, pady=5)
+        
+        ttk.Label(content_frame, text="Term:", font=("Arial", 10)).pack(anchor=tk.W, pady=(15, 5))
+        self.term_combo = ttk.Combobox(content_frame, values=[1, 2, 3], state="readonly", width=50)
+        self.term_combo.pack(fill=tk.X, pady=5)
+        
+        # Marks entry fields
+        marks_frame = ttk.Frame(content_frame)
+        marks_frame.pack(fill=tk.X, pady=10)
+        
+        ttk.Label(marks_frame, text="Mark 1:", font=("Arial", 10)).pack(side=tk.LEFT, padx=5)
+        self.mark1 = ttk.Entry(marks_frame, width=8)
+        self.mark1.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(marks_frame, text="Mark 2:", font=("Arial", 10)).pack(side=tk.LEFT, padx=5)
+        self.mark2 = ttk.Entry(marks_frame, width=8)
+        self.mark2.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(marks_frame, text="Mark 3:", font=("Arial", 10)).pack(side=tk.LEFT, padx=5)
+        self.mark3 = ttk.Entry(marks_frame, width=8)
+        self.mark3.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(marks_frame, text="Mark 4:", font=("Arial", 10)).pack(side=tk.LEFT, padx=5)
+        self.mark4 = ttk.Entry(marks_frame, width=8)
+        self.mark4.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Label(marks_frame, text="Exam:", font=("Arial", 10)).pack(side=tk.LEFT, padx=5)
+        self.exam_mark = ttk.Entry(marks_frame, width=8)
+        self.exam_mark.pack(side=tk.LEFT, padx=5)
+        
+        # Register button
+        ttk.Button(content_frame, text="Register Marks", command=self.register_marks).pack(pady=20, fill=tk.X)
+        
+        # Marks history
+        ttk.Label(content_frame, text="Marks History:", font=("Arial", 10, "bold")).pack(anchor=tk.W, pady=(15, 5))
+        
+        columns = ("Subject", "Term", "Mark 1", "Mark 2", "Mark 3", "Mark 4", "Exam", "Total", "Grade")
+        self.marks_tree = ttk.Treeview(content_frame, columns=columns, height=10)
+        self.marks_tree.column("#0", width=0)
+        
+        for col in columns:
+            self.marks_tree.column(col, width=50)
+            self.marks_tree.heading(col, text=col)
+        
+        self.marks_tree.pack(fill=tk.BOTH, expand=True, pady=5)
+    
+    def register_marks(self):
+        """Register student marks"""
+        if not self.student_var.get():
+            messagebox.showerror("Error", "Please select a student")
+            return
+        
+        if not self.subject_combo.get():
+            messagebox.showerror("Error", "Please select a subject")
+            return
+        
+        if not self.term_combo.get():
+            messagebox.showerror("Error", "Please select a term")
+            return
+        
+        try:
+            mark1 = float(self.mark1.get()) if self.mark1.get() else None
+            mark2 = float(self.mark2.get()) if self.mark2.get() else None
+            mark3 = float(self.mark3.get()) if self.mark3.get() else None
+            mark4 = float(self.mark4.get()) if self.mark4.get() else None
+            exam = float(self.exam_mark.get()) if self.exam_mark.get() else None
+        except ValueError:
+            messagebox.showerror("Error", "Please enter valid numbers for marks")
+            return
+        
+        # Calculate total
+        marks = [m for m in [mark1, mark2, mark3, mark4, exam] if m is not None]
+        total = sum(marks) if marks else 0
+        
+        # Determine grade
+        grade = self.calculate_grade(total / len(marks) if marks else 0)
+        
+        # Get student ID
+        student_id = self.students_data.get(self.student_var.get())
+        
+        try:
+            self.cursor.execute(
+                """INSERT INTO student_marks 
+                   (student_id, subject, term, mark_1, mark_2, mark_3, mark_4, exam_mark, total_mark, grade)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (student_id, self.subject_combo.get(), int(self.term_combo.get()), 
+                 mark1, mark2, mark3, mark4, exam, total, grade)
+            )
+            self.conn.commit()
+            messagebox.showinfo("Success", "Marks registered successfully!")
+            
+            # Clear fields
+            self.mark1.delete(0, tk.END)
+            self.mark2.delete(0, tk.END)
+            self.mark3.delete(0, tk.END)
+            self.mark4.delete(0, tk.END)
+            self.exam_mark.delete(0, tk.END)
+            
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Error registering marks: {e}")
+    
+    def calculate_grade(self, average):
+        """Calculate grade based on average"""
+        if average >= 90:
+            return "A"
+        elif average >= 80:
+            return "B"
+        elif average >= 70:
+            return "C"
+        elif average >= 60:
+            return "D"
+        else:
+            return "E"
+    
+    def show_my_marks(self):
+        """Show student's own marks"""
+        # This would show marks specific to logged-in student
+        messagebox.showinfo("Marks", "Your marks will be displayed here")
     
     def logout(self):
         """Logout user"""
